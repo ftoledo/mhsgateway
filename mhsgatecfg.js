@@ -155,6 +155,7 @@ function cfg_node(node) {
             format(menu_fmt, "Description", ini.iniGetValue('node:'+node,'description')),
             format(menu_fmt, "Pickup From", ini.iniGetValue('node:'+node,'pickup')),
             format(menu_fmt, "Send To",ini.iniGetValue('node:'+node,'sendto')),
+            format(menu_fmt, "Type",ini.iniGetValue('node:'+node,'type')),
             format(menu_fmt, "Active",ini.iniGetValue('node:'+node,'active'))
         ];
         cmd = uifc.list(WIN_ORG|WIN_ACT|WIN_MID|WIN_ESC, "Node config: " + node, menu, ctx_node);
@@ -181,7 +182,18 @@ function cfg_node(node) {
                 }
                 break;
             case 3:
-
+                uifc.help_text = help('type_of_gateway');
+                switch(uifc.list(WIN_MID|WIN_SAV, "Type", ["MBBS", "OTHER"])) {
+                    case 0:
+                        ini.iniSetValue('node:'+node,'type', "MBBS");
+                        break;
+                    case 1:
+                        ini.iniSetValue('node:'+node,'type', "OTHER");
+                        break;
+                }
+                break;
+                //var val = ini.iniGetValue('node:'+node,'active',true);
+            case 4:
                 switch(uifc.list(WIN_MID|WIN_SAV, "Active", ["Yes", "No"])) {
                     case 0:
                         ini.iniSetValue('node:'+node,'active', true);
@@ -189,13 +201,9 @@ function cfg_node(node) {
                     case 1:
                         ini.iniSetValue('node:'+node,'active', false);
                         break;
-                    }
-                var val = ini.iniGetValue('node:'+node,'active',true);
-                //tmp = uifc.input(WIN_MID|WIN_SAV,'Active',val,1024, K_EDIT);
-                //if (tmp !== undefined) {
-                //    ini.iniSetValue('node:'+node,'active', tmp);
-                //}
-                //break;
+                }
+                break;
+                //var val = ini.iniGetValue('node:'+node,'active',true);
             case -1:
                 //exit
                 break;
@@ -366,8 +374,13 @@ function help(item) {
             str += "\1Sent to\1\n\nThis is the directory that MHSGate will \1send\1 messages.\n";
             str += "Verify that will be the same value as INMSG (WG side Level 4 config option)";
             break;
-
+        case 'type_of_gateway':
+            str = "Type of supported gateways\n\n";
+            str += "Select \1MBBS\1 for MajorBBS/Worldgroup, \1OTHER\1 for unsupported";
+            break;
         default:
+            log(LOG_WARNING, "Help text not defined for : " + item);
+            uifc.msg("Help text not define for: "+ item);
             str = '';
     }
     return str;
