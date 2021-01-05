@@ -78,33 +78,33 @@ function mark_as_bad(file) {
 
 function import() {
 
-    //load ini as cfg
-    settings = ini.iniGetAllObjects();
-    var cfg = {};
-    for(var i in settings) {
-        cfg[settings[i].name.toLowerCase()] = settings[i];
-    }
+    log(LOG_INFO, "Begin IMPORT...");
 
     // load nodes
-    var nodes_list = ini.iniGetSections('node:');
-    var nodes = [];
-    for (n in nodes_list) {
-        nodes.push(nodes_list[n].slice(5).toLowerCase());
-    }
+    var nodes = load_nodes();
 
     // pickup each node
+    for (n in nodes) {
 
-    for (node in nodes) {
 
-        if (cfg['node:' + nodes[node]].active != true) {
-            log(LOG_INFO, "Skip inactive node: " + nodes[node]);
+        node = nodes[n];
+        log(LOG_INFO, "Processing node: " + node);
+        n_description = ini.iniGetValue('node:' + node, 'description', '<empty>');
+        n_pickup = ini.iniGetValue('node:' + node, 'pickup', '');
+        n_active = ini.iniGetValue('node:' + node, 'active', false);
+        n_type = ini.iniGetValue('node:' + node, 'type', 'OTHER');
+        log(LOG_INFO, "Description: " + n_description);
+
+        if (!n_active) {
+            log(LOG_WARNING, "This node is not acctive, skipping");
             continue;
         }
 
-        log(LOG_INFO, "Scanning node: " + nodes[node]);
+
+        log(LOG_INFO, "Scanning node: " + node);
 
         var files = [];
-        files = directory(cfg['node:' + nodes[node]].pickup + "/*");
+        files = directory(backslash(n_pickup) + "*");
         for (f in files) {
 
             //skip directories
@@ -133,75 +133,79 @@ function import() {
                     mark_as_bad(fp.name);
                     continue;
                 }
-                var dest_area = header['to'].slice(0,header['to'].indexOf('@'));
-                dest_area = dest_area.toLowerCase();
-                log(LOG_DEBUG,dest_area);
 
-                if (cfg['area:'+dest_area]) {
-                    if (cfg['area:'+dest_area].active != true) {
-                        log(LOG_INFO, "Skip inactive area: " + dest_area);
+                areas = load_areas(node);
+
+                var found = false;
+                for(a in areas) {
+                    area = areas[a];
+
+                    a_active = ini.iniGetValue('area:' + node + ':' + area, 'active', true);
+                    if (!a_active) {
+                        log(LOG_WARNING, 'The area is not active for this node...skipping');
                         continue;
                     }
-                    if (cfg['area:'+dest_area].target) {
-                        dest_sub = cfg['area:'+dest_area].target;
-                        log(LOG_INFO, "Map: " + dest_area + " => " + dest_sub);
-                        var msgbase = new MsgBase(dest_sub);
-                        if (msgbase.open()) {
-                            var newhdr = {
-                                to: 'All',
-                                from: format_mhs_from_addr(header['from']),
-                                subject: header['subject'],
-                                from_agent: AGENT_PROCESS,
-                                from_net_type: NET_MHS,
-                                from_net_addr: format_mhs_from_addr(header['from']),
-                                summary: header['from'],
-                                //tags: 'MHS',
-                            };
 
-                            var newbody = body.join("\n");
+                    a_import = ini.iniGetValue('area:' + node + ':' + area, 'import','');
 
-                            if (msgbase.save_msg(newhdr, newbody)) {
-                                log(LOG_INFO, "Message Saved!");
-                                if (files[f].toLowerCase().slice(-5) == 'nodel') {
-                                    log(LOG_INFO, "Skip .nodel test file");
-                                }
-                                else {
-                                    if (fp.remove()) {
-                                        log(LOG_INFO, "File removed: " + fp.name);
+                    log(LOG_DEBUG,format("To: %s, must import as %s ", header['to'], a_import ));
+                    if(header['to'] == a_import) {
+                        log(LOG_DEBUG, "Match Found!");
+                        found = true;
+                        break;
+                    }
 
-                                    }
-                                    else {
-                                        log(LOG_ERROR, "File processed but not removed (check permissions): " + fp.error);
-                                    }
-                                }
+                }
+
+                if (found) {
+                    //import the message
+                    var msgbase = new MsgBase(area);
+                    if (msgbase.open()) {
+                        var newhdr = {
+                            to: 'All',
+                            from: format_mhs_from_addr(header['from']),
+                            subject: header['subject'],
+                            from_agent: AGENT_PROCESS,
+                            from_net_type: NET_MHS,
+                            from_net_addr: format_mhs_from_addr(header['from']),
+                            summary: header['from'],
+                            //tags: 'MHS',
+                        };
+
+                        var newbody = body.join("\n");
+
+                        if (msgbase.save_msg(newhdr, newbody)) {
+                            log(LOG_INFO, "Message Saved!");
+                            if (files[f].toLowerCase().slice(-5) == 'nodel') {
+                                log(LOG_INFO, "Skip .nodel test file");
                             }
                             else {
-                                log(LOG_ERROR, "Cannot save message into msgbase: " + msgbase.last_error);
+                                if (fp.remove()) {
+                                    log(LOG_INFO, "File removed: " + fp.name);
+                                }
+                                else {
+                                    log(LOG_ERROR, "File processed but not removed (check permissions): " + fp.error);
+                                }
                             }
                         }
                         else {
-                            log(LOG_ERROR, "Cannot open msgbase(" + msgbase.last_error+"): " + dest_sub );
-                            continue;
+                            log(LOG_ERROR, "Cannot save message into msgbase: " + msgbase.last_error);
                         }
                     }
                     else {
-                        log(LOG_ERROR, "Found area: " + dest_area  + " with no Target settings");
+                        log(LOG_ERROR, "Cannot open msgbase(" + msgbase.last_error+"): " + area );
                         continue;
                     }
-
                 }
                 else {
-                    log(LOG_WARNING, "Area no found: " + dest_area);
-                    continue;
-                }
+                    log(LOG_WARNING, "Destination not found: " + header['to']);
+                } //if found
+            } //if open file
 
+        } //for each files
 
-               //print (JSON.stringify(body));
-               print(JSON.stringify(header));
-            }
-        }
+    } //for each node
 
-    }
 }
 
 // load nodes as array
@@ -467,7 +471,7 @@ function main() {
     }
 
     export();
-    //import();
+    import();
 
 }
 
