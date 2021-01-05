@@ -1,5 +1,6 @@
 load("uifcdefs.js");
 load("sbbsdefs.js");
+const app_version = "1.0";
 
 // Backward compatability hack.
 if (typeof uifc.list.CTX === "undefined") {
@@ -16,7 +17,7 @@ function cfg_globals(){
 
     var cmd = 0;
     var ctx_globals = new uifc.list.CTX();
-
+    uifc.help_text = help("globals");
     while(cmd >= 0) {
         var menu = [
             format("%-20s %s", "Gateway Name", ini.iniGetValue('global', 'gateway_name'))
@@ -50,26 +51,26 @@ function cfg_area(area) {
     while(cmd >= 0) {
         var menu = [
 
-            format(menu_fmt, "Target", ini.iniGetValue('area:'+area,'target')),
-            format(menu_fmt, "Nodes", ini.iniGetValue('area:'+area,'nodes')),
+            format(menu_fmt, "Import Address", ini.iniGetValue('area:'+area,'import')),
+            format(menu_fmt, "Export Address", ini.iniGetValue('area:'+area,'export')),
             format(menu_fmt, "Active",ini.iniGetValue('area:'+area,'active'))
         ];
-        cmd = uifc.list(WIN_ORG|WIN_ACT|WIN_MID|WIN_ESC, "Area config: " + area, menu, ctx_area);
+        cmd = uifc.list(WIN_ACT|WIN_MID|WIN_ESC, "Area config: " + area, menu, ctx_area);
         switch(cmd) {
             case 0:
-
-                sub = pick_area();
-                if (sub !== undefined) {
-                    ini.iniSetValue('area:'+area,'target', sub);
+                //import
+                var val = ini.iniGetValue('area:'+area,'import','');
+                var tmp = uifc.input(WIN_MID|WIN_SAV,'Import Address',val,50, K_EDIT);
+                if (tmp !== undefined ) {
+                    ini.iniSetValue('area:'+area,'import', tmp);
                 }
-                cmd = 0;
                 break;
             case 1:
-                //TODO Pick Nodes
-                var val = ini.iniGetValue('area:'+area,'nodes','');
-                tmp = uifc.input(WIN_MID|WIN_SAV,'Nodes (coma separated)',val,1024, K_EDIT);
-                if (tmp !== undefined) {
-                    ini.iniSetValue('area:'+area,'nodes', tmp);
+                //export
+                var val = ini.iniGetValue('area:'+area,'export','');
+                var tmp = uifc.input(WIN_MID|WIN_SAV,'Export Address',val,50, K_EDIT);
+                if (tmp !== undefined ) {
+                    ini.iniSetValue('area:'+area,'export', tmp);
                 }
                 break;
             case 2:
@@ -137,7 +138,7 @@ function cfg_areas(node) {
                 ));
         }
         //menu = menu.map(function(v){return v.toUpperCase();});
-        area = uifc.list(WIN_SAV|WIN_ACT|WIN_DEL|WIN_INS|WIN_DELACT, "Select Area (SBB internal code | MHS From | MHS To)", menu, ctx_areas);
+        area = uifc.list(WIN_SAV|WIN_ACT|WIN_DEL|WIN_INS, "Select Area (SBB internal code | MHS From | MHS To)", menu, ctx_areas);
         if (area == -1) {
             break;
         }
@@ -152,7 +153,11 @@ function cfg_areas(node) {
         }
         else if (area & MSK_DEL) {
             area &= MSK_OFF;
-            del_area(areas_list[area]);
+            if (areas_list[area] != undefined){
+                if (confirm("Delete area?", true, ctx_areas)) {
+                    del_area(areas_list[area]);
+                }
+            }
         }
         else {
             cfg_area(areas_list[area]);
@@ -172,10 +177,10 @@ function cfg_node(node, ctx_node) {
             format(menu_fmt, "Pickup From", ini.iniGetValue('node:'+node,'pickup')),
             format(menu_fmt, "Send To",ini.iniGetValue('node:'+node,'sendto')),
             format(menu_fmt, "Type",ini.iniGetValue('node:'+node,'type')),
-            format(menu_fmt, "Linked Areas","Active:" + total_areas),
+            format(menu_fmt, "Linked Areas","Active: " + total_areas),
             format(menu_fmt, "Active",ini.iniGetValue('node:'+node,'active'))
         ];
-        cmd = uifc.list(WIN_ORG|WIN_ACT|WIN_MID|WIN_ESC, "Node config: " + node, menu, ctx_node);
+        cmd = uifc.list(WIN_SAV|WIN_ACT|WIN_MID|WIN_ESC, "Node config: " + node, menu, ctx_node);
         switch(cmd) {
             case 0:
                 var val = ini.iniGetValue('node:'+node,'description','');
@@ -244,7 +249,6 @@ function add_node(node) {
 }
 
 function del_node(node) {
-    uifc.msg("Delete");
     ini.iniRemoveSection("node:"+node);
 }
 
@@ -252,7 +256,7 @@ function cfg_nodes() {
     var node = 0;
     var tmp;
     var ctx_nodes = new uifc.list.CTX();
-
+    uifc.help_text = help("nodes");
     while(node >= 0) {
 
         var nodes_list = [];
@@ -264,7 +268,7 @@ function cfg_nodes() {
              nodes_list.push(nodes[n].slice(5));
         }
 
-        node = uifc.list(WIN_SAV|WIN_ACT|WIN_DEL|WIN_INS|WIN_DELACT, "Select Node", menu, ctx_nodes);
+        node = uifc.list(WIN_SAV|WIN_ACT|WIN_DEL|WIN_INS|WIN_DELACT|WIN_EDIT, "Select Node", menu, ctx_nodes);
         if (node == -1) {
             break;
         }
@@ -276,9 +280,22 @@ function cfg_nodes() {
             }
             break;
         }
-        else if (node & MSK_DEL) {
+        else if (node & MSK_EDIT) {
             node &= MSK_OFF;
-            del_node(nodes_list[node]);
+            tmp = uifc.input(WIN_SAV|WIN_MID, "New name for Node", nodes_list[node], 30, K_EDIT);
+            if ((tmp !== undefined) && (tmp != "")) {
+                rename_node(nodes_list[node], tmp);
+            }
+
+        }
+        else if (node & MSK_DEL) {
+
+            node &= MSK_OFF;
+            if (nodes_list[node] != undefined) {
+                if (confirm("Delete node and asociated areas? (WARNING: This is not reversible!!!", false)) {
+                    del_node(nodes_list[node]);
+                }
+            }
         }
         else {
             cfg_node(nodes_list[parseInt(node)], ctx_nodes);
@@ -339,13 +356,13 @@ function pick_area()
     var i;
 
     while (cmd >= 0) {
-        cmd = uifc.list(WIN_SAV|WIN_ACT|WIN_RHT, "Select Group" , grps, ctx_pick_area);
+        cmd = uifc.list(WIN_SAV|WIN_RHT, "Select Group" , grps, ctx_pick_area);
         if (cmd >= 0) {
             dctx_pic_area = new uifc.list.CTX();
             areacodes = msg_area.grp[grps[cmd]].sub_list.map(function(v){return v.code;});
             areas = areacodes.map(function(v){return msg_area.sub[v].name;});
 
-            sub = uifc.list(WIN_SAV|WIN_ACT|WIN_BOT, "Select Sub", areas, dctx_pic_area);
+            sub = uifc.list(WIN_SAV|WIN_BOT, "Select Sub", areas, dctx_pic_area);
             if (sub >= 0) {
                 return areacodes[sub];
             }
@@ -389,11 +406,42 @@ function count_areas(node) {
     return c;
 }
 
+function rename_node(old_name, new_name) {
+    uifc.msg ("rename " + old_name + " to " + new_name);
+
+}
+function confirm (msg, default_yes, ctx) {
+
+ var cmd = 0;
+
+    while(cmd >= 0) {
+        var menu = ["Yes","No"];
+
+        cmd = uifc.list(WIN_SAV|WIN_MID|WIN_ESC, msg, menu, ctx);
+        switch(cmd) {
+            case 0:
+                return true;
+                break;
+            case 1:
+                return false;
+                break;
+            case -1:
+                //exit
+                return false;
+                break;
+            default:
+                uifc.msg("Unhandled Return: "+cmd);
+                return false;
+                break;
+        }
+    }
+
+}
 function help(item) {
     var str;
     switch (item) {
         case 'main':
-            str = "Global configurations";
+            str = "Setup MHSGateway (v"+app_version+")";
             break;
         case 'gateway_name':
             str = "Name for `this` MHS gateway";
@@ -405,6 +453,13 @@ function help(item) {
             str += "\n\n";
             str += "\1Sent to\1\n\nThis is the directory that MHSGate will \1send\1 messages.\n";
             str += "Verify that will be the same value as INMSG (WG side Level 4 config option)";
+            str += "\n\n";
+            str += "\1Type\1\n\nType of remote system (for some quirks)\n";
+            str += "\n\n";
+            str += "\1Linked Areas\1\n\nSetup the areas to import/export.\n";
+            str += "\n\n";
+            str += "\1Active\1\n\nEnable / Disable node processing.\n";
+
             break;
         case 'type_of_gateway':
             str = "Type of supported gateways\n\n";
@@ -413,6 +468,9 @@ function help(item) {
         case 'linked_areas':
             str = "Setup linked areas between your host and remote system.\n";
             str += "You must add every area that wish share with the remote system.\n\n";
+            break;
+        case 'area':
+            str = "Linked Area Settings\n\n";
             str += "\1Area name\1\n\n";
             str += "This is the internal SBBS area code.";
             str += "\n\n";
@@ -426,11 +484,18 @@ function help(item) {
             str += "If set to false, this area will be skipped on import/export process.";
             str += "\n\n";
             break;
+        case 'nodes':
+            str = "List of linked Nodes (Remote Systems)\n\n";
+            break;
+        case 'globals':
+            str = "Global settings for MHSGateway\n\n";
+            str += "This are general settings to run the MHS Gateway";
+            break;
 
         default:
             log(LOG_WARNING, "Help text not defined for : " + item);
             uifc.msg("Help text not define for: "+ item);
-            str = 'No help text defined';
+            str = '';
     }
     return str;
 }
