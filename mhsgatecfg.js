@@ -2,7 +2,7 @@ load("uifcdefs.js");
 load("sbbsdefs.js");
 "use strict";
 
-const app_version = "1.0";
+const MHSGATEWAY_VERSION = "1.0";
 
 // Backward compatability hack.
 if (typeof uifc.list.CTX === "undefined") {
@@ -484,7 +484,7 @@ function help(item) {
     var str;
     switch (item) {
         case 'main':
-            str = "Setup MHSGateway (v"+app_version+")";
+            str = "Setup MHSGateway v" + MHSGATEWAY_VERSION + ")";
             break;
         case 'gateway_name':
             str = "Name for `this` MHS gateway";
