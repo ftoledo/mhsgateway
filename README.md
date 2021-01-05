@@ -42,8 +42,9 @@ MODS (/sbbs/mods).
 
 Luego ejecutar con jsexec la herramienta de configuración
 
-# /sbbs/exec $ ./jsexec mhsgatecfg
-
+```
+# /sbbs/exec$ ./jsexec mhsgatecfg.js
+```
 Se tienen que dar de alta los nodos y las areas que cada uno transfiere
 
 La configuracion para SBBS se guarda en el directorio de CTRL
@@ -82,11 +83,15 @@ created=05-01-2021 14:36:54
 active=true
 
 ```
+### Nodos [node:NOMBRE_DE_NODO]
 
 Cada nodo tiene que tener las rutas de import y export del filesystem del WG.
-Estas se pueden compartir via samba, ftp, rsync o lo que sea.
+PICKUP: Direcotrio donde MHSGateway Toma los mensajes *desde* WG
+SENDTO: Directorio donde MHSGateay envia los mensajes *hacia* el WG
 
-Esquema de ejemplo usando samba:
+Estas se pueden compartir via samba, o transferir via ftp, rsync o lo que sea.
+
+#### Esquema de ejemplo usando samba:
 
 SBBS Server debe compartir via Samba /sbbs/data/mhs
 
@@ -101,29 +106,32 @@ WG Server debe conectar la unidad N: a \\sbbsserver\mhs
     +--------------------++-----------------------------+
 ```
 
-Cada area tiene mapeado la direccion con la se generan los mensajes
-MHS (export), por ejempo el nombre del foro en el WG /Hello
+### Areas [area:NOMBRE_DE_NODO:SBBS_INTERNAL_CODE]
 
-Tambien tiene la direccion con la cual llegan los mensajes de cierto foro para
+Cada area tiene la direccion con la cual llegan los mensajes de cierto foro para
 importar ejemplo: region90@fidonet
-Esta configuracion sale de la deficinion de "echoes" de la configuracion del
+
+IMPORT: Direccion MHS de donde vienen los mensajes, ej: region90@fidonet
+
+Esta configuracion sale de la defición de "echoes" de la configuracion del
 foro en el WG. Y se debe agregar como:
 
 Add Echoe: mhs:regio90@fidonet
 
-Entonces cuadno uno escribe en un foro del WG, este se exporta via MHS con
+Entonces cuando uno escribe en un foro del WG, este se exporta via MHS con
  la direccion region90@fidonet
 
 Cuando MHSGateway lo importa verifica esa direccion si corresponde a un area
 del SBBS en caso afirmativo, lo importa al Msgbase de SBBS
 
+Tambien se mapeado la direccion con la se generan los mensajes
+MHS (export), por ejempo el nombre del foro en el WG /region90
+
 Cuando MHSGateway exporta los mensajes, veerifica cual es el ultimo puntero
-exportado en el .INI del area. Y si hay mensajes nuevo que expotar, los genera
-con la direccion de salida /REGION90, de esta manera el WG lo importa al
-al foto "REGION90"
+exportado en el .INI del area (/sbbs/data/subs/internal_code.ini) . Y si hay
+mensajes nuevos que expotar, los genera con la direccion de salida /REGION90
 
-
-
+De esta manera el WG lo importa al foro "REGION90"
 
 
 
