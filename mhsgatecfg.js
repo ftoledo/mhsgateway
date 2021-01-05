@@ -12,8 +12,6 @@ if (typeof uifc.list.CTX === "undefined") {
 uifc.init("MHS Gateway to WG");
 js.on_exit("uifc.bail();");
 
-const menu_fmt = "%-20s %s";
-
 function cfg_globals(){
 
     var cmd = 0;
@@ -21,7 +19,7 @@ function cfg_globals(){
 
     while(cmd >= 0) {
         var menu = [
-            format(menu_fmt, "Gateway Name", ini.iniGetValue('global', 'gateway_name'))
+            format("%-20s %s", "Gateway Name", ini.iniGetValue('global', 'gateway_name'))
         ];
 
         cmd = uifc.list(WIN_ORG|WIN_ACT|WIN_MID|WIN_ESC, "Global Options", menu, ctx_globals);
@@ -47,6 +45,7 @@ function cfg_globals(){
 function cfg_area(area) {
     var ctx_area = new uifc.list.CTX();
     var cmd = 0;
+    var menu_fmt = "%-20s %s";
     uifc.help_text = help('area');
     while(cmd >= 0) {
         var menu = [
@@ -98,15 +97,16 @@ function del_area(area) {
     ini.iniRemoveSection("area:" + area);
 }
 
-function add_area(area) {
+function add_area(node, area) {
     area = sanitized(area);
     area = area.toUpperCase();
-    ini.iniSetValue("area:" + area, "target",'');
-    ini.iniSetValue("area:" + area, "created",strftime("%d-%m-%Y %H:%M:%S"));
-    ini.iniSetValue("area:" + area, "active",true);
+    ini.iniSetValue("area:" + node + ":" + area, "import",'');
+    ini.iniSetValue("area:" + node + ":" + area, "export",'');
+    ini.iniSetValue("area:" + node + ":" + area, "created",strftime("%d-%m-%Y %H:%M:%S"));
+    ini.iniSetValue("area:" + node + ":" + area, "active",true);
 }
 
-function cfg_areas() {
+function cfg_areas(node) {
     var area = 0;
     var tmp;
     var ctx_areas = new uifc.list.CTX();
@@ -116,22 +116,37 @@ function cfg_areas() {
         var areas_list = [];
         var areas;
         var menu = [];
-        areas = ini.iniGetSections("area:");
+        var inactive = "";
+
+        areas = ini.iniGetSections("area:" + node + ":");
 
         for (a in areas) {
              areas_list.push(areas[a].slice(5).toUpperCase());
-             menu.push(format(menu_fmt,areas[a].slice(5), '|' + ini.iniGetValue(areas[a],'target')));
+
+             if (ini.iniGetValue(areas[a],'active') != true) {
+                inactive = "Inactive";
+             }
+             else {
+                inactive = "";
+             }
+             menu.push(format("%-20s | %-20s | %-20s | %-20s",
+                areas[a].slice(5),
+                ini.iniGetValue(areas[a],'import'),
+                ini.iniGetValue(areas[a],'export'),
+                inactive
+                ));
         }
         //menu = menu.map(function(v){return v.toUpperCase();});
-        area = uifc.list(WIN_SAV|WIN_ACT|WIN_DEL|WIN_INS|WIN_DELACT, "Select Area", menu, ctx_areas);
+        area = uifc.list(WIN_SAV|WIN_ACT|WIN_DEL|WIN_INS|WIN_DELACT, "Select Area (SBB internal code | MHS From | MHS To)", menu, ctx_areas);
         if (area == -1) {
             break;
         }
         else if (area == areas.length || (area & MSK_INS) == MSK_INS) {
             area &= MSK_OFF;
-            tmp = uifc.input(WIN_SAV|WIN_MID, "Area", 30);
+            tmp = pick_area();
             if ((tmp !== undefined) && (tmp != "")) {
-                add_area(tmp);
+                add_area(node, tmp);
+                cfg_areas(node);
             }
             break;
         }
@@ -145,10 +160,11 @@ function cfg_areas() {
     }
 }
 
-function cfg_node(node) {
-    var ctx_node = new uifc.list.CTX();
+function cfg_node(node, ctx_node) {
     var cmd = 0;
+    var menu_fmt = "%-20s %s";
     uifc.help_text = help('paths');
+    total_areas = count_areas(node);
     while(cmd >= 0) {
         var menu = [
 
@@ -156,6 +172,7 @@ function cfg_node(node) {
             format(menu_fmt, "Pickup From", ini.iniGetValue('node:'+node,'pickup')),
             format(menu_fmt, "Send To",ini.iniGetValue('node:'+node,'sendto')),
             format(menu_fmt, "Type",ini.iniGetValue('node:'+node,'type')),
+            format(menu_fmt, "Linked Areas","Active:" + total_areas),
             format(menu_fmt, "Active",ini.iniGetValue('node:'+node,'active'))
         ];
         cmd = uifc.list(WIN_ORG|WIN_ACT|WIN_MID|WIN_ESC, "Node config: " + node, menu, ctx_node);
@@ -192,8 +209,12 @@ function cfg_node(node) {
                         break;
                 }
                 break;
-                //var val = ini.iniGetValue('node:'+node,'active',true);
+
             case 4:
+                uifc.help_text = help('linked_areas');
+                cfg_areas(node);
+                break;
+            case 5:
                 switch(uifc.list(WIN_MID|WIN_SAV, "Active", ["Yes", "No"])) {
                     case 0:
                         ini.iniSetValue('node:'+node,'active', true);
@@ -239,7 +260,7 @@ function cfg_nodes() {
         var nodes;
         nodes = ini.iniGetSections("node:");
         for (n in nodes) {
-             menu.push(format(menu_fmt, nodes[n].slice(5).toUpperCase(), '|' + ini.iniGetValue(nodes[n], 'description')));
+             menu.push(format("%-20s %s", nodes[n].slice(5).toUpperCase(), '|' + ini.iniGetValue(nodes[n], 'description')));
              nodes_list.push(nodes[n].slice(5));
         }
 
@@ -260,7 +281,7 @@ function cfg_nodes() {
             del_node(nodes_list[node]);
         }
         else {
-            cfg_node(nodes_list[parseInt(node)]);
+            cfg_node(nodes_list[parseInt(node)], ctx_nodes);
         }
     }
 }
@@ -274,7 +295,7 @@ function main() {
 
     while(cmd >= 0) {
         uifc.help_text = help("main");
-        var menu = ["Global Options","MHS Nodes","Areas configuration"];
+        var menu = ["Global Options","MHS Nodes"];
         cmd = uifc.list(WIN_ORG|WIN_ACT|WIN_MID|WIN_ESC, "MSH Gateway Options", menu, ctx_main);
         switch(cmd) {
             case 0:
@@ -282,9 +303,6 @@ function main() {
                 break;
             case 1:
                 cfg_nodes();
-                break;
-            case 2:
-                cfg_areas();
                 break;
             case -1:
                 //exit
@@ -356,6 +374,20 @@ function pick_node()
     return undefined;
 }
 
+/**
+ * Count the active linked areas configured at node
+ */
+function count_areas(node) {
+    areas = ini.iniGetSections("area:" + node + ":");
+    var c = 0;
+    for (a in areas) {
+        if (ini.iniGetValue(areas[a], 'active') == true) {
+            c++;
+        }
+    }
+
+    return c;
+}
 
 function help(item) {
     var str;
@@ -378,10 +410,27 @@ function help(item) {
             str = "Type of supported gateways\n\n";
             str += "Select \1MBBS\1 for MajorBBS/Worldgroup, \1OTHER\1 for unsupported";
             break;
+        case 'linked_areas':
+            str = "Setup linked areas between your host and remote system.\n";
+            str += "You must add every area that wish share with the remote system.\n\n";
+            str += "\1Area name\1\n\n";
+            str += "This is the internal SBBS area code.";
+            str += "\n\n";
+            str += "\1Import name\1 \n\n";
+            str += "SBBS will import the messages come From this address (ex: sysopsgeneral@dovenet).";
+            str += "\n\n";
+            str += "\1Export name\1 \n\n";
+            str += "This is the address that SBBS will export to remote system (on Wrolgroup can be /hello).";
+            str += "\n\n";
+            str += "\1Enabled\1 \n\n";
+            str += "If set to false, this area will be skipped on import/export process.";
+            str += "\n\n";
+            break;
+
         default:
             log(LOG_WARNING, "Help text not defined for : " + item);
             uifc.msg("Help text not define for: "+ item);
-            str = '';
+            str = 'No help text defined';
     }
     return str;
 }
