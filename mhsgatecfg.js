@@ -1,5 +1,7 @@
 load("uifcdefs.js");
 load("sbbsdefs.js");
+"use strict";
+
 const app_version = "1.0";
 
 // Backward compatability hack.
@@ -93,14 +95,20 @@ function cfg_area(area) {
     }
 
 }
-function del_area(area) {
+function del_area(node, area) {
     area = area.toUpperCase();
-    ini.iniRemoveSection("area:" + area);
+    node = node.toUpperCase();
+    ini.iniRemoveSection("area:" + node + ':' + area);
 }
 
 function add_area(node, area) {
     area = sanitized(area);
     area = area.toUpperCase();
+
+    node = sanitized(node);
+    node = node.toUpperCase();
+
+
     ini.iniSetValue("area:" + node + ":" + area, "import",'');
     ini.iniSetValue("area:" + node + ":" + area, "export",'');
     ini.iniSetValue("area:" + node + ":" + area, "created",strftime("%d-%m-%Y %H:%M:%S"));
@@ -151,11 +159,13 @@ function cfg_areas(node) {
             }
             break;
         }
-        else if (area & MSK_DEL) {
+        else if ((area & MSK_DEL) == MSK_DEL) {
             area &= MSK_OFF;
             if (areas_list[area] != undefined){
-                if (confirm("Delete area?", true, ctx_areas)) {
-                    del_area(areas_list[area]);
+
+
+                if (confirm("Delete area " + areas_list[area].slice(node.length+1) + "?", true, ctx_areas)) {
+                    del_area(node, areas_list[area].slice(node.length+1));
                 }
             }
         }
@@ -274,21 +284,21 @@ function cfg_nodes() {
         }
         else if (node == nodes.length || (node & MSK_INS) == MSK_INS) {
             node &= MSK_OFF;
-            tmp = uifc.input(WIN_SAV|WIN_MID, "Node", 30);
+            tmp = uifc.input(WIN_SAV|WIN_MID, "New Node name", 30);
             if ((tmp !== undefined) && (tmp != "")) {
                 add_node(tmp);
             }
             break;
         }
-        else if (node & MSK_EDIT) {
+        else if ((node & MSK_EDIT) == MSK_EDIT) {
             node &= MSK_OFF;
-            tmp = uifc.input(WIN_SAV|WIN_MID, "New name for Node", nodes_list[node], 30, K_EDIT);
+            tmp = uifc.input(WIN_SAV|WIN_MID, "Rename Node", nodes_list[node], 30, K_EDIT);
             if ((tmp !== undefined) && (tmp != "")) {
                 rename_node(nodes_list[node], tmp);
             }
 
         }
-        else if (node & MSK_DEL) {
+        else if ((node & MSK_DEL) == MSK_DEL) {
 
             node &= MSK_OFF;
             if (nodes_list[node] != undefined) {
@@ -406,9 +416,42 @@ function count_areas(node) {
     return c;
 }
 
-function rename_node(old_name, new_name) {
-    uifc.msg ("rename " + old_name + " to " + new_name);
 
+/**
+ * Rename the node (recursive areas)
+ */
+function rename_node(old_name, new_name) {
+    var areas;
+    var area;
+
+    //Create node
+    add_node(new_name);
+
+    //set old values to new node
+    ini.iniSetValue('node:' + new_name, 'description', ini.iniGetValue('node:' + old_name, 'description'));
+    ini.iniSetValue('node:' + new_name, 'created', ini.iniGetValue('node:' + old_name, 'created'));
+    ini.iniSetValue('node:' + new_name, 'active', ini.iniGetValue('node:' + old_name, 'active'));
+    ini.iniSetValue('node:' + new_name, 'pickup', ini.iniGetValue('node:' + old_name, 'pickup'));
+    ini.iniSetValue('node:' + new_name, 'sendto', ini.iniGetValue('node:' + old_name, 'sendto'));
+    ini.iniSetValue('node:' + new_name, 'type', ini.iniGetValue('node:' + old_name, 'type'));
+
+    areas = ini.iniGetSections("area:" + old_name + ":");
+    slice_string = "area:" + old_name + ":";
+
+    for (a in areas) {
+        area = areas[a].slice(slice_string.length).toUpperCase();
+        //Create area
+        add_area(new_name, area);
+        //Set old areas value
+        ini.iniSetValue('area:' + new_name + ":" + area,'import', ini.iniGetValue(areas[a],'import'));
+        ini.iniSetValue('area:' + new_name + ":" + area,'export', ini.iniGetValue(areas[a],'export'));
+        ini.iniSetValue('area:' + new_name + ":" + area,'created', ini.iniGetValue(areas[a],'created'));
+        ini.iniSetValue('area:' + new_name + ":" + area,'active', ini.iniGetValue(areas[a],'active'));
+        //Remove old area
+        ini.iniRemoveSection(areas[a]);
+    }
+    // Remove old node
+    del_node(old_name);
 }
 function confirm (msg, default_yes, ctx) {
 
