@@ -433,7 +433,8 @@ function export() {
                     msg_out.printf("To: %s @ MBBS { MBBS: %s}\r\n", a_export, a_export);
                     msg_out.printf("Subject: %s\r\n", hdr.subject);
                     msg_out.printf("Summary: MBBS: %s\r\n", hdr.to);
-                    msg_out.printf("Date: %s\r\n", hdr.date);
+                    d = new Date(hdr.date);
+                    msg_out.printf("Date: %02d/%02d/%d %02d:%02d:%02d\r\n", d.getMonth(), d.getDay(), d.getFullYear(), d.getHours(), d.getMinutes(), d.getSeconds());
                     msg_out.printf("\r\n", hdr.date);
                     msg_out.printf("@DATE: %s\r\n", hdr.date);
                     body = msgbase.get_msg_body(i);
