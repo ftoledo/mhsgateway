@@ -2,8 +2,18 @@ load("smbdefs.js");
 const MHSGATEWAY_VERSION = '1.0';
 "use strict";
 
+// Mode behavior when import message for another MHS domain (gateway name)
 
+const GW_MODE_BAD = 0; // mark a .BAD file if not for our gateway
+const GW_MODE_SKIP = 1; // skip file if the msg is not for our gateway (no delete it)
+const GW_MODE_ROUTE = 2; // try to route to another MHS configured nodes
+const GW_MODE_DELETE = 3; // silent delete the msg file for uwnknown destination (!DANGEROUS?)
 
+var GW_MODES = [];
+GW_MODES[GW_MODE_BAD] = 'Mark as BAD';
+GW_MODES[GW_MODE_SKIP] = 'Skip it';
+GW_MODES[GW_MODE_ROUTE] = 'Route To Nodes';
+GW_MODES[GW_MODE_DELETE] = 'Delete it';
 
 function parse_header(msg) {
     log(LOG_DEBUG, "Parse headers");
@@ -93,6 +103,7 @@ function import() {
         n_pickup = ini.iniGetValue('node:' + node, 'pickup', '');
         n_active = ini.iniGetValue('node:' + node, 'active', false);
         n_type = ini.iniGetValue('node:' + node, 'type', 'OTHER');
+        n_gw_mode = ini.iniGetValue('node:' + node, 'gw_mode', 0);
         log(LOG_INFO, "Description: " + n_description);
 
         if (!n_active) {
@@ -100,9 +111,14 @@ function import() {
             continue;
         }
 
+        if (n_gw_mode < 0 || n_gw_mode > 3) {
+            log(LOG_ERROR,format("!Unknown gateway mode for this node: %s using default", n_gw_mode));
+            n_gw_mode = GW_MODE_BAD;
+        }
+
+        log(LOG_INFO, format("Action to unknown destinations: %s", GW_MODES[n_gw_mode]));
 
         log(LOG_INFO, "Scanning node: " + node);
-
         var files = [];
         files = directory(backslash(n_pickup) + "*");
         for (f in files) {
@@ -127,6 +143,7 @@ function import() {
                 fp.close();
                 header = parse_header(msg);
                 body = parse_body(msg);
+
                 //validations
                 if (header['SMF-70'] == undefined){
                     log(LOG_WARNING, "No SMF-70 header found");
@@ -134,72 +151,104 @@ function import() {
                     continue;
                 }
 
-                areas = load_areas(node);
-
-                var found = false;
-                for(a in areas) {
-                    area = areas[a];
-
-                    a_active = ini.iniGetValue('area:' + node + ':' + area, 'active', true);
-                    if (!a_active) {
-                        log(LOG_WARNING, 'The area is not active for this node...skipping');
-                        continue;
-                    }
-
-                    a_import = ini.iniGetValue('area:' + node + ':' + area, 'import','');
-
-                    log(LOG_DEBUG,format("To: %s, must import as %s ", header['to'], a_import ));
-                    if(header['to'] == a_import) {
-                        log(LOG_DEBUG, "Match Found!");
-                        found = true;
-                        break;
-                    }
-
-                }
-
-                if (found) {
-                    //import the message
-                    var msgbase = new MsgBase(area);
-                    if (msgbase.open()) {
-                        var newhdr = {
-                            to: 'All',
-                            from: format_mhs_from_addr(header['from']),
-                            subject: header['subject'],
-                            from_agent: AGENT_PROCESS,
-                            from_net_type: NET_MHS,
-                            from_net_addr: format_mhs_from_addr(header['from']),
-                            summary: header['from'],
-                            //tags: 'MHS',
-                        };
-
-                        var newbody = body.join("\n");
-
-                        if (msgbase.save_msg(newhdr, newbody)) {
-                            log(LOG_INFO, "Message Saved!");
-                            if (files[f].toLowerCase().slice(-5) == 'nodel') {
-                                log(LOG_INFO, "Skip .nodel test file");
+                //is for my?
+                dest = header['to'].split('@');
+                if (dest[1].toLowerCase() != g_gateway_name.toLowerCase()) {
+                    log(LOG_WARNING, format("Destination domain !unknown: %s",header['to']));
+                    switch(n_gw_mode) {
+                        case GW_MODE_SKIP:
+                            log(LOG_WARNING, format("Skiping file %s", fp.name));
+                            continue;
+                            break;
+                        case GW_MODE_DELETE:
+                            log(LOG_WARNING, format("Will deleting file %s", fp.name));
+                            if(!fp.remove()) {
+                                log(LOG_ERROR, format("Cannot delete %s",fp.name));
                             }
-                            else {
-                                if (fp.remove()) {
-                                    log(LOG_INFO, "File removed: " + fp.name);
+                            continue;
+                            break;
+                        case GW_MODE_BAD:
+                            log(LOG_WARNING, format("Mark as .BAD: %s",fp.name));
+                            mark_as_bad(fp.name)
+                            continue;
+                        default:
+                           break;
+
+                    }
+                    
+                }
+                else {
+                    //message is for us
+                    log(LOG_DEBUG, format("Match destination domain %s", dest[1]));
+                    areas = load_areas(node);
+
+                    var found = false;
+                    for(a in areas) {
+                        area = areas[a];    
+
+                        a_active = ini.iniGetValue('area:' + node + ':' + area, 'active', true);
+                        if (!a_active) {
+                            log(LOG_WARNING, 'The area is not active for this node...skipping');
+                            continue;
+                        }
+
+                        a_import = ini.iniGetValue('area:' + node + ':' + area, 'import','');
+
+                        log(LOG_DEBUG,format("Check To: %s, for area %s", header['to'], a_import ));
+                        
+                        if(dest[0].toLowerCase() == a_import.toLowerCase()) {
+                            log(LOG_DEBUG, "Match Found!");
+                            found = true;
+                            break;
+                        }
+
+                    }
+
+                    if (found) {
+                        //import the message
+                        var msgbase = new MsgBase(area);
+                        if (msgbase.open()) {
+                            var newhdr = {
+                                to: 'All',
+                                from: format_mhs_from_addr(header['from']),
+                                subject: header['subject'].trim(),
+                                from_agent: AGENT_PROCESS,
+                                from_net_type: NET_MHS,
+                                from_net_addr: format_mhs_from_addr(header['from']),
+                                summary: header['from'],
+                                tags: 'MHS-Imported MHS-From-' + dest[1]
+                            };
+
+                            var newbody = body.join("\n");
+
+                            if (msgbase.save_msg(newhdr, newbody)) {
+                                log(LOG_INFO, "Message Saved!");
+                                if (files[f].toLowerCase().slice(-5) == 'nodel') {
+                                    log(LOG_INFO, "Skip .nodel test file");
                                 }
-                                else {
-                                    log(LOG_ERROR, "File processed but not removed (check permissions): " + fp.error);
+                               else {
+                                    if (fp.remove()) {
+                                        log(LOG_INFO, "File removed: " + fp.name);
+                                    }
+                                    else {
+                                        log(LOG_ERROR, "File processed but not removed (check permissions): " + fp.error);
+                                    }
                                 }
+                            }
+                           else {
+                                log(LOG_ERROR, "Cannot save message into msgbase: " + msgbase.last_error);
                             }
                         }
                         else {
-                            log(LOG_ERROR, "Cannot save message into msgbase: " + msgbase.last_error);
+                            log(LOG_ERROR, "Cannot open msgbase(" + msgbase.last_error+"): " + area );
+                            continue;
                         }
                     }
                     else {
-                        log(LOG_ERROR, "Cannot open msgbase(" + msgbase.last_error+"): " + area );
-                        continue;
-                    }
-                }
-                else {
-                    log(LOG_WARNING, "Destination not found: " + header['to']);
-                } //if found
+                        log(LOG_WARNING, "Destination area not found: " + header['to']);
+                    } //if found
+                } // message fo us
+ 
             } //if open file
 
         } //for each files
@@ -321,11 +370,6 @@ function export() {
     log(LOG_INFO, "Beging EXPORT");
     //loading globals
 
-    var g_gateway_name = ini.iniGetValue('global', 'gateway_name', '');
-    if (g_gateway_name == '') {
-        log(LOG_ERROR, "ABORT! You must set the gateway_name config option to continue.");
-        return -1;
-    }
     for (n in nodes) {
         node = nodes[n];
         log(LOG_INFO, "Processing node: " + node);
@@ -430,14 +474,13 @@ function export() {
                         continue;
                     }
                     msg_out.printf("From: %s @ %s\r\n", hdr.from, g_gateway_name);
-                    msg_out.printf("To: %s @ MBBS { MBBS: %s}\r\n", a_export, a_export);
+                    msg_out.printf("To: %s @ MBBS { MBBS: %s }\r\n", a_export, a_export);
                     msg_out.printf("Subject: %s\r\n", hdr.subject);
                     msg_out.printf("Summary: MBBS: %s\r\n", hdr.to);
-                    d = new Date(hdr.date);
-                    msg_out.printf("Date: %02d/%02d/%d %02d:%02d:%02d\r\n", d.getMonth(), d.getDay(), d.getFullYear(), d.getHours(), d.getMinutes(), d.getSeconds());
+                    msg_out.printf("Date: %s\r\n", strftime("%m/%d/%Y %H:%M:%S"));
                     msg_out.printf("\r\n", hdr.date);
                     msg_out.printf("@DATE: %s\r\n", hdr.date);
-                    body = msgbase.get_msg_body(i);
+                    body = msgbase.get_msg_body(i, false, true);
                     msg_out.write(body);
 
                     msg_out.close();
@@ -457,7 +500,7 @@ function export() {
 }
 
 var ini = new File(system.ctrl_dir + "mhsgate.ini");
-
+var g_gateway_name = '';
 
 function main() {
 
@@ -469,6 +512,12 @@ function main() {
     if (! ini.open('r')) {
         log(LOG_ERROR, "Error open .ini configuration file: " + ini.name);
         exit(1);
+    }
+
+    g_gateway_name = ini.iniGetValue('global', 'gateway_name', '');
+    if (g_gateway_name == '') {
+        log(LOG_ERROR, "ABORT! You must set the gateway_name config option to continue.");
+        return -1;
     }
 
     export();

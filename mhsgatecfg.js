@@ -4,6 +4,17 @@ load("sbbsdefs.js");
 
 const MHSGATEWAY_VERSION = "1.0";
 
+const GW_MODE_BAD = 0; // mark a .BAD file if not for our gateway
+const GW_MODE_SKIP = 1; // skip file if the msg is not for our gateway (no delete it)
+const GW_MODE_ROUTE = 2; // try to route to another MHS configured nodes
+const GW_MODE_DELETE = 3; // silent delete the msg file for uwnknown destination (!DANGEROUS?)
+
+var GW_MODES = [];
+GW_MODES[GW_MODE_BAD] = 'Mark as BAD';
+GW_MODES[GW_MODE_SKIP] = 'Skip it';
+GW_MODES[GW_MODE_ROUTE] = 'Route To Nodes';
+GW_MODES[GW_MODE_DELETE] = 'Delete it';
+
 // Backward compatability hack.
 if (typeof uifc.list.CTX === "undefined") {
     uifc.list.CTX = function () {
@@ -146,7 +157,7 @@ function cfg_areas(node) {
                 ));
         }
         //menu = menu.map(function(v){return v.toUpperCase();});
-        area = uifc.list(WIN_SAV|WIN_ACT|WIN_DEL|WIN_INS, "Select Area (SBB internal code | MHS From | MHS To)", menu, ctx_areas);
+        area = uifc.list(WIN_SAV|WIN_ACT|WIN_DEL|WIN_INS, "Select Area (SBBS internal code | MHS From | MHS To)", menu, ctx_areas);
         if (area == -1) {
             break;
         }
@@ -187,6 +198,7 @@ function cfg_node(node, ctx_node) {
             format(menu_fmt, "Pickup From", ini.iniGetValue('node:'+node,'pickup')),
             format(menu_fmt, "Send To",ini.iniGetValue('node:'+node,'sendto')),
             format(menu_fmt, "Type",ini.iniGetValue('node:'+node,'type')),
+            format(menu_fmt, "GW Mode",GW_MODES[ini.iniGetValue('node:'+node,'gw_mode')]),
             format(menu_fmt, "Linked Areas","Active: " + total_areas),
             format(menu_fmt, "Active",ini.iniGetValue('node:'+node,'active'))
         ];
@@ -224,12 +236,17 @@ function cfg_node(node, ctx_node) {
                         break;
                 }
                 break;
-
             case 4:
+                n_gw_mode = uifc.list(WIN_MID|WIN_SAV, "Gateway Mode", GW_MODES);
+                if (n_gw_mode != -1 ) {
+                    ini.iniSetValue('node:'+node,'gw_mode', n_gw_mode);
+                }
+                break;
+            case 5:
                 uifc.help_text = help('linked_areas');
                 cfg_areas(node);
                 break;
-            case 5:
+            case 6:
                 switch(uifc.list(WIN_MID|WIN_SAV, "Active", ["Yes", "No"])) {
                     case 0:
                         ini.iniSetValue('node:'+node,'active', true);
@@ -490,7 +507,7 @@ function help(item) {
             str = "Name for `this` MHS gateway";
             break;
         case 'paths':
-            str = "Setup the paths for the gateway\n\n";
+            str = "Setup settings and paths for the gateway node\n\n";
             str += "\1Pickup from\1\n\nThis is the directory that MHSGate will \1pickup\1 messages.\n";
             str += "Verify that will be the same value as OUTMSG (WG side Level 4 config option)";
             str += "\n\n";
@@ -498,6 +515,14 @@ function help(item) {
             str += "Verify that will be the same value as INMSG (WG side Level 4 config option)";
             str += "\n\n";
             str += "\1Type\1\n\nType of remote system (for some quirks)\n";
+            str += "\n\n";
+            str += "\1Gateway Mode\1\n\nBehavior for this node on unknown destination adresses.\n\n";
+            str += "Action to take when message are import with unknown detination address: \n\n";
+            str += "Possible modes: \n\n";
+            str += "    \1Mark as BAD:\1 the message will rename with .BAD extension\n";
+            str += "    \1Skip:\1 The mssage file will skipped (dont touched)\n";
+            str += "    \1Route:\1 check for domain of another configured nodes and try to deliver to them\n";
+            str += "    \1Delete:\1 Delete the message for unknown destinations (warning! you lost it)\n";
             str += "\n\n";
             str += "\1Linked Areas\1\n\nSetup the areas to import/export.\n";
             str += "\n\n";
