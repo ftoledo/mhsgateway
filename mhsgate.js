@@ -134,6 +134,7 @@ function import() {
 
             log(LOG_INFO, "** Processing: " + files[f]);
             var fp = new File(files[f]);
+            fp.debug = true;
             if (! fp.open("r")) {
                 log(LOG_INFO, "Can't open file: " + files[f]);
             } else {
@@ -227,10 +228,12 @@ function import() {
                                     log(LOG_INFO, "Skip .nodel test file");
                                 }
                                else {
-                                    if (fp.remove()) {
+                                    log(LOG_DEBUG, format("Remove file: %s", fp.name));
+                                    if (file_remove(fp.name)) {
                                         log(LOG_INFO, "File removed: " + fp.name);
                                     }
                                     else {
+                                        log(LOG_DEBUG, format ("File is_open: %s",f.is_open));
                                         log(LOG_ERROR, "File processed but not removed (check permissions): " + fp.error);
                                     }
                                 }
