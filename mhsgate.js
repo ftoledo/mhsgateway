@@ -15,6 +15,10 @@ GW_MODES[GW_MODE_SKIP] = 'Skip it';
 GW_MODES[GW_MODE_ROUTE] = 'Route To Nodes';
 GW_MODES[GW_MODE_DELETE] = 'Delete it';
 
+/**
+ * Parse headers and return array
+ * @context: import
+ */
 function parse_header(msg) {
     log(LOG_DEBUG, "Parse headers");
     var headers = [];
@@ -37,7 +41,7 @@ function parse_header(msg) {
             field = msg[line].slice(0,msg[line].indexOf(":")).trim().toLowerCase();
             value = msg[line].slice(msg[line].indexOf(":")+1,msg[line].length).trim();
         }
-        log(LOG_DEBUG, "Field: " + field);
+        log(LOG_DEBUG, format("hdr.%s: %s", field, value));
         hdr[field] = value;
 
         headers = hdr;
@@ -46,7 +50,10 @@ function parse_header(msg) {
     return headers;
 }
 
-
+/**
+ * Get user@domain for mhs from header
+ * @context: import
+ */
 function format_mhs_from_addr(from) {
     part = from.indexOf(' ');
     domain = from.slice(0,part).trim();
@@ -56,13 +63,14 @@ function format_mhs_from_addr(from) {
     name = name.split(' ');
     nametext = name[1].slice(0,name[1].length-1).trim();
 
-    log(LOG_DEBUG, "Name  : " + nametext);
-    log(LOG_DEBUG, "Domain: " + domtext);
-
     return nametext + '@' + domtext;
 
 }
 
+/**
+ * Read mhs file body and return as array of lines
+ * @context: import
+ */
 function parse_body(msg) {
 
     log(LOG_DEBUG,"Parse body");
@@ -79,188 +87,18 @@ function parse_body(msg) {
 
 }
 
-
+/**
+ * Rename file as .BAD
+ * @context: import
+ */
 function mark_as_bad(file) {
     log(LOG_INFO, "Mark as bad file: " + file);
     file_rename(file, file + ".BAD");
-
 }
 
-function import() {
-
-    log(LOG_INFO, "Begin IMPORT...");
-
-    // load nodes
-    var nodes = load_nodes();
-
-    // pickup each node
-    for (n in nodes) {
-
-
-        node = nodes[n];
-        log(LOG_INFO, "Processing node: " + node);
-        n_description = ini.iniGetValue('node:' + node, 'description', '<empty>');
-        n_pickup = ini.iniGetValue('node:' + node, 'pickup', '');
-        n_active = ini.iniGetValue('node:' + node, 'active', false);
-        n_type = ini.iniGetValue('node:' + node, 'type', 'OTHER');
-        n_gw_mode = ini.iniGetValue('node:' + node, 'gw_mode', 0);
-        log(LOG_INFO, "Description: " + n_description);
-
-        if (!n_active) {
-            log(LOG_WARNING, "This node is not acctive, skipping");
-            continue;
-        }
-
-        if (n_gw_mode < 0 || n_gw_mode > 3) {
-            log(LOG_ERROR,format("!Unknown gateway mode for this node: %s using default", n_gw_mode));
-            n_gw_mode = GW_MODE_BAD;
-        }
-
-        log(LOG_INFO, format("Action to unknown destinations: %s", GW_MODES[n_gw_mode]));
-
-        log(LOG_INFO, "Scanning node: " + node);
-        var files = [];
-        files = directory(backslash(n_pickup) + "*");
-        for (f in files) {
-
-            //skip directories
-            if (file_isdir(files[f]))
-                continue;
-
-            if (files[f].toLowerCase().slice(-3) == "bad") {
-                log(LOG_INFO, "Skip bad file: " + files[f]);
-                continue;
-            }
-
-            log(LOG_INFO, "** Processing: " + files[f]);
-            var fp = new File(files[f]);
-            fp.debug = true;
-            if (! fp.open("r")) {
-                log(LOG_INFO, "Can't open file: " + files[f]);
-            } else {
-                var msg = [];
-
-                var msg = fp.readAll();
-                fp.close();
-                header = parse_header(msg);
-                body = parse_body(msg);
-
-                //validations
-                if (header['SMF-70'] == undefined){
-                    log(LOG_WARNING, "No SMF-70 header found");
-                    mark_as_bad(fp.name);
-                    continue;
-                }
-
-                //is for my?
-                dest = header['to'].split('@');
-                if (dest[1].toLowerCase() != g_gateway_name.toLowerCase()) {
-                    log(LOG_WARNING, format("Destination domain !unknown: %s",header['to']));
-                    switch(n_gw_mode) {
-                        case GW_MODE_SKIP:
-                            log(LOG_WARNING, format("Skiping file %s", fp.name));
-                            continue;
-                            break;
-                        case GW_MODE_DELETE:
-                            log(LOG_WARNING, format("Will deleting file %s", fp.name));
-                            if(!fp.remove()) {
-                                log(LOG_ERROR, format("Cannot delete %s",fp.name));
-                            }
-                            continue;
-                            break;
-                        case GW_MODE_BAD:
-                            log(LOG_WARNING, format("Mark as .BAD: %s",fp.name));
-                            mark_as_bad(fp.name)
-                            continue;
-                        default:
-                           break;
-
-                    }
-                    
-                }
-                else {
-                    //message is for us
-                    log(LOG_DEBUG, format("Match destination domain %s", dest[1]));
-                    areas = load_areas(node);
-
-                    var found = false;
-                    for(a in areas) {
-                        area = areas[a];    
-
-                        a_active = ini.iniGetValue('area:' + node + ':' + area, 'active', true);
-                        if (!a_active) {
-                            log(LOG_WARNING, 'The area is not active for this node...skipping');
-                            continue;
-                        }
-
-                        a_import = ini.iniGetValue('area:' + node + ':' + area, 'import','');
-
-                        log(LOG_DEBUG,format("Check To: %s, for area %s", header['to'], a_import ));
-                        
-                        if(dest[0].toLowerCase() == a_import.toLowerCase()) {
-                            log(LOG_DEBUG, "Match Found!");
-                            found = true;
-                            break;
-                        }
-
-                    }
-
-                    if (found) {
-                        //import the message
-                        var msgbase = new MsgBase(area);
-                        if (msgbase.open()) {
-                            var newhdr = {
-                                to: 'All',
-                                from: format_mhs_from_addr(header['from']),
-                                subject: header['subject'].trim(),
-                                from_agent: AGENT_PROCESS,
-                                from_net_type: NET_MHS,
-                                from_net_addr: format_mhs_from_addr(header['from']),
-                                summary: header['from'],
-                                tags: 'MHS-Imported MHS-From-' + dest[1]
-                            };
-
-                            var newbody = body.join("\n");
-
-                            if (msgbase.save_msg(newhdr, newbody)) {
-                                log(LOG_INFO, "Message Saved!");
-                                if (files[f].toLowerCase().slice(-5) == 'nodel') {
-                                    log(LOG_INFO, "Skip .nodel test file");
-                                }
-                               else {
-                                    log(LOG_DEBUG, format("Remove file: %s", fp.name));
-                                    if (file_remove(fp.name)) {
-                                        log(LOG_INFO, "File removed: " + fp.name);
-                                    }
-                                    else {
-                                        log(LOG_DEBUG, format ("File is_open: %s",f.is_open));
-                                        log(LOG_ERROR, "File processed but not removed (check permissions): " + fp.error);
-                                    }
-                                }
-                            }
-                           else {
-                                log(LOG_ERROR, "Cannot save message into msgbase: " + msgbase.last_error);
-                            }
-                        }
-                        else {
-                            log(LOG_ERROR, "Cannot open msgbase(" + msgbase.last_error+"): " + area );
-                            continue;
-                        }
-                    }
-                    else {
-                        log(LOG_WARNING, "Destination area not found: " + header['to']);
-                    } //if found
-                } // message fo us
- 
-            } //if open file
-
-        } //for each files
-
-    } //for each node
-
-}
-
-// load nodes as array
+/**
+ *  load nodes as array
+ */
 function load_nodes() {
 
     var ini_nodes = ini.iniGetSections('node:');
@@ -273,7 +111,9 @@ function load_nodes() {
     return nodes;
 }
 
-//load areas of node as array
+/**
+ * load areas of node as array
+ */
 function load_areas(node) {
     var ini_areas = ini.iniGetSections('area:' + node + ':');
     var areas = [];
@@ -287,10 +127,11 @@ function load_areas(node) {
     return areas;
 }
 
-
-// get the last prt exported from node / area pair
-// this use the sub ini file in data/subs directory
-
+/**
+ * Get the last prt exported from node/area pair
+ * this use the sub ini file in data/subs directory
+ * @return int pointer value
+ */
 function get_last_ptr(node, area) {
 
     var msgbase = new MsgBase(area);
@@ -309,16 +150,17 @@ function get_last_ptr(node, area) {
             return ptr;
             ini_msg.close();
         }
-
-
     } else {
         log(LOG_ERROR, "Can not get msgbase.cfg for " + area);
         return -1;
     }
 }
 
+/**
+ * Set the last pointer for NODE.export_prt
+ * on the sub.ini file
+ */
 function set_last_ptr(node, area, ptr) {
-
 
     log(LOG_DEBUG, format("Set last PTR to %s %s %d:", node, area, ptr));
     var msgbase = new MsgBase(area);
@@ -337,17 +179,16 @@ function set_last_ptr(node, area, ptr) {
             ini_msg.close();
             return true;
         }
-
-
     } else {
         log(LOG_ERROR, "Can not get msgbase.cfg for " + area);
         return false;
     }
-
 }
 
-
-// use to geenrate random filename
+/**
+ * Use to generate random filename
+ * @context: export
+ */
 function makeid(length) {
    var result           = '';
    var characters       = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -358,7 +199,11 @@ function makeid(length) {
    return result;
 }
 
-//Export process for all nodes -> areas
+/**
+ * Export process for all nodes -> areas
+ * Read each sub for each node and export the messages
+ * the pointer will save into sub.ini files
+ */
 function export() {
 
     var nodes = load_nodes();
@@ -369,9 +214,7 @@ function export() {
     var n_active = "";
     var n_type = "";
 
-
     log(LOG_INFO, "Beging EXPORT");
-    //loading globals
 
     for (n in nodes) {
         node = nodes[n];
@@ -491,20 +334,194 @@ function export() {
 
 
                 }
-
             }
-
-
         }
-
     }
-
-
 }
 
+/**
+ * Import message for each node, parse it and insert into sub msgbase file
+ */
+function import() {
+
+    log(LOG_INFO, "Begin IMPORT...");
+
+    // load nodes
+    var nodes = load_nodes();
+
+    // pickup each node
+    for (n in nodes) {
+
+        node = nodes[n];
+        log(LOG_INFO, "Processing node: " + node);
+        n_description = ini.iniGetValue('node:' + node, 'description', '<empty>');
+        n_pickup = ini.iniGetValue('node:' + node, 'pickup', '');
+        n_active = ini.iniGetValue('node:' + node, 'active', false);
+        n_type = ini.iniGetValue('node:' + node, 'type', 'OTHER');
+        n_gw_mode = ini.iniGetValue('node:' + node, 'gw_mode', 0);
+        log(LOG_INFO, "Description: " + n_description);
+
+        if (!n_active) {
+            log(LOG_WARNING, "This node is not acctive, skipping");
+            continue;
+        }
+
+        if (n_gw_mode < 0 || n_gw_mode > 3) {
+            log(LOG_ERROR,format("!Unknown gateway mode for this node: %s using default", n_gw_mode));
+            n_gw_mode = GW_MODE_BAD;
+        }
+
+        log(LOG_INFO, format("Action to unknown destinations: %s", GW_MODES[n_gw_mode]));
+
+        log(LOG_INFO, "Scanning node: " + node);
+        var files = [];
+        files = directory(backslash(n_pickup) + "*");
+        for (f in files) {
+
+            //skip directories
+            if (file_isdir(files[f]))
+                continue;
+
+            if (files[f].toLowerCase().slice(-3) == "bad") {
+                log(LOG_INFO, "Skip bad file: " + files[f]);
+                continue;
+            }
+
+            log(LOG_INFO, "** Processing: " + files[f]);
+            var fp = new File(files[f]);
+            fp.debug = true;
+            if (! fp.open("r")) {
+                log(LOG_INFO, "Can't open file: " + files[f]);
+            } else {
+                var msg = [];
+
+                var msg = fp.readAll();
+                fp.close();
+                header = parse_header(msg);
+                body = parse_body(msg);
+
+                //validations
+                if (header['SMF-70'] == undefined){
+                    log(LOG_WARNING, "No SMF-70 header found");
+                    mark_as_bad(fp.name);
+                    continue;
+                }
+
+                //is for my?
+                dest = header['to'].split('@');
+                if (dest[1].toLowerCase() != g_gateway_name.toLowerCase()) {
+                    log(LOG_WARNING, format("Destination domain !unknown: %s",header['to']));
+                    switch(n_gw_mode) {
+                        case GW_MODE_SKIP:
+                            log(LOG_WARNING, format("Skiping file %s", fp.name));
+                            continue;
+                            break;
+                        case GW_MODE_DELETE:
+                            log(LOG_WARNING, format("Will deleting file %s", fp.name));
+                            if(!fp.remove()) {
+                                log(LOG_ERROR, format("Cannot delete %s",fp.name));
+                            }
+                            continue;
+                            break;
+                        case GW_MODE_BAD:
+                            log(LOG_WARNING, format("Mark as .BAD: %s",fp.name));
+                            mark_as_bad(fp.name)
+                            continue;
+                        default:
+                           break;
+                    }
+                }
+                else {
+                    //message is for us
+                    log(LOG_DEBUG, format("Match destination domain %s", dest[1]));
+                    areas = load_areas(node);
+
+                    var found = false;
+                    for(a in areas) {
+                        area = areas[a];
+
+                        a_active = ini.iniGetValue('area:' + node + ':' + area, 'active', true);
+                        if (!a_active) {
+                            log(LOG_WARNING, 'The area is not active for this node...skipping');
+                            continue;
+                        }
+
+                        a_import = ini.iniGetValue('area:' + node + ':' + area, 'import','');
+
+                        log(LOG_DEBUG,format("Check To: %s, for area %s", header['to'], a_import ));
+
+                        if(dest[0].toLowerCase() == a_import.toLowerCase()) {
+                            log(LOG_DEBUG, "Match Found!");
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (found) {
+                        //import the message
+                        var msgbase = new MsgBase(area);
+                        if (msgbase.open()) {
+                            var newhdr = {
+                                to: 'All',
+                                from: format_mhs_from_addr(header['from']),
+                                subject: header['subject'].trim(),
+                                from_agent: AGENT_PROCESS,
+                                from_net_type: NET_MHS,
+                                from_net_addr: format_mhs_from_addr(header['from']),
+                                summary: header['from'],
+                                tags: 'MHS-Imported MHS-From-' + dest[1]
+                            };
+                            if (header['summary']) {
+                                log(LOG_DEBUG, format("Summary detected: %s", header['summary']));
+                                var toaddr = header['summary'].split(':');
+                                newhdr.to = toaddr[1].trim();
+                                log(LOG_DEBUG, format("Using %s instead of All", newhdr.to));
+                            }
+                            var newbody = body.join("\n");
+
+                            if (msgbase.save_msg(newhdr, newbody)) {
+                                log(LOG_INFO, "Message Saved!");
+                                if (files[f].toLowerCase().slice(-5) == 'nodel') {
+                                    log(LOG_INFO, "Skip .nodel test file");
+                                }
+                               else {
+                                    log(LOG_DEBUG, format ("File is_open: %s",f.is_open));
+                                    log(LOG_DEBUG, format("Remove file: %s", fp.name));
+                                    if (file_remove(fp.name)) {
+                                        log(LOG_INFO, "File removed: " + fp.name);
+                                    }
+                                    else {
+                                        log(LOG_ERROR, "File processed but not removed (check permissions): " + fp.error);
+                                    }
+                                }
+                            }
+                           else {
+                                log(LOG_ERROR, "Cannot save message into msgbase: " + msgbase.last_error);
+                            }
+                        }
+                        else {
+                            log(LOG_ERROR, "Cannot open msgbase(" + msgbase.last_error+"): " + area );
+                            continue;
+                        }
+                    }
+                    else {
+                        log(LOG_WARNING, "Destination area not found: " + header['to']);
+                    } //if found
+                } // message fo us
+            } //if open file
+        } //for each files
+    } //for each node
+}
+
+/**
+ * Global assets
+ */
 var ini = new File(system.ctrl_dir + "mhsgate.ini");
 var g_gateway_name = '';
 
+/**
+ * Main entry point
+ */
 function main() {
 
     log(LOG_INFO, "Starting MHSGateway v" + MHSGATEWAY_VERSION);
@@ -525,7 +542,6 @@ function main() {
 
     export();
     import();
-
 }
 
 main()
