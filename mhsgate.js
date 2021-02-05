@@ -378,23 +378,23 @@ function import() {
         files = directory(backslash(n_pickup) + "*");
         for (f in files) {
 
+            var f_name = files[f];
             //skip directories
-            if (file_isdir(files[f]))
+            if (file_isdir(f_name))
                 continue;
 
-            if (files[f].toLowerCase().slice(-3) == "bad") {
-                log(LOG_INFO, "Skip bad file: " + files[f]);
+            if (f_name.toLowerCase().slice(-3) == "bad") {
+                log(LOG_INFO, "Skip bad file: " + f_name);
                 continue;
             }
 
-            log(LOG_INFO, "** Processing: " + files[f]);
-            var fp = new File(files[f]);
+            log(LOG_INFO, "** Processing: " + f_name);
+            var fp = new File(f_name);
             fp.debug = true;
             if (! fp.open("r")) {
-                log(LOG_INFO, "Can't open file: " + files[f]);
+                log(LOG_INFO, "Can't open file: " + f_name);
             } else {
                 var msg = [];
-
                 var msg = fp.readAll();
                 fp.close();
                 header = parse_header(msg);
@@ -403,7 +403,7 @@ function import() {
                 //validations
                 if (header['SMF-70'] == undefined){
                     log(LOG_WARNING, "No SMF-70 header found");
-                    mark_as_bad(fp.name);
+                    mark_as_bad(f_name);
                     continue;
                 }
 
@@ -413,19 +413,19 @@ function import() {
                     log(LOG_WARNING, format("Destination domain !unknown: %s",header['to']));
                     switch(n_gw_mode) {
                         case GW_MODE_SKIP:
-                            log(LOG_WARNING, format("Skiping file %s", fp.name));
+                            log(LOG_WARNING, format("Skiping file %s", f_name));
                             continue;
                             break;
                         case GW_MODE_DELETE:
-                            log(LOG_WARNING, format("Will deleting file %s", fp.name));
+                            log(LOG_WARNING, format("Will deleting file %s", f_name));
                             if(!fp.remove()) {
-                                log(LOG_ERROR, format("Cannot delete %s",fp.name));
+                                log(LOG_ERROR, format("Cannot delete %s",f_name));
                             }
                             continue;
                             break;
                         case GW_MODE_BAD:
-                            log(LOG_WARNING, format("Mark as .BAD: %s",fp.name));
-                            mark_as_bad(fp.name)
+                            log(LOG_WARNING, format("Mark as .BAD: %s",f_name));
+                            mark_as_bad(f_name)
                             continue;
                         default:
                            break;
@@ -449,7 +449,6 @@ function import() {
                         a_import = ini.iniGetValue('area:' + node + ':' + area, 'import','');
 
                         log(LOG_DEBUG,format("Check To: %s, for area %s", header['to'], a_import ));
-
                         if(dest[0].toLowerCase() == a_import.toLowerCase()) {
                             log(LOG_DEBUG, "Match Found!");
                             found = true;
@@ -481,14 +480,13 @@ function import() {
 
                             if (msgbase.save_msg(newhdr, newbody)) {
                                 log(LOG_INFO, "Message Saved!");
-                                if (files[f].toLowerCase().slice(-5) == 'nodel') {
+                                if (f_name.toLowerCase().slice(-5) == 'nodel') {
                                     log(LOG_INFO, "Skip .nodel test file");
                                 }
                                else {
-                                    log(LOG_DEBUG, format ("File is_open: %s",f.is_open));
-                                    log(LOG_DEBUG, format("Remove file: %s", fp.name));
-                                    if (file_remove(fp.name)) {
-                                        log(LOG_INFO, "File removed: " + fp.name);
+                                    log(LOG_DEBUG, "Remove file: "+ f_name);
+                                    if (file_remove(f_name)) {
+                                        log(LOG_INFO, "File removed: " + f_name);
                                     }
                                     else {
                                         log(LOG_ERROR, "File processed but not removed (check permissions): " + fp.error);
