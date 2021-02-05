@@ -451,6 +451,7 @@ function rename_node(old_name, new_name) {
     ini.iniSetValue('node:' + new_name, 'pickup', ini.iniGetValue('node:' + old_name, 'pickup'));
     ini.iniSetValue('node:' + new_name, 'sendto', ini.iniGetValue('node:' + old_name, 'sendto'));
     ini.iniSetValue('node:' + new_name, 'type', ini.iniGetValue('node:' + old_name, 'type'));
+    ini.iniSetValue('node:' + new_name, 'gw_mode', ini.iniGetValue('node:' + old_name, 'gw_mode', GW_MODE_BAD));
 
     areas = ini.iniGetSections("area:" + old_name + ":");
     slice_string = "area:" + old_name + ":";
