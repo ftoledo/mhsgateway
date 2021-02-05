@@ -68,6 +68,22 @@ function format_mhs_from_addr(from) {
 }
 
 /**
+ * Get domain for mhs from header
+ * @context: import
+ */
+function format_mhs_domain_addr(from) {
+    part = from.indexOf(' ');
+    domain = from.slice(0,part).trim();
+    domain = domain.split('@');
+    domtext = domain[1];
+
+    return domtext;
+
+}
+
+
+
+/**
  * Read mhs file body and return as array of lines
  * @context: import
  */
@@ -162,7 +178,7 @@ function get_last_ptr(node, area) {
  */
 function set_last_ptr(node, area, ptr) {
 
-    log(LOG_DEBUG, format("Set last PTR to %s %s %d:", node, area, ptr));
+    log(LOG_DEBUG, format("Set last PTR to %s %s %d", node, area, ptr));
     var msgbase = new MsgBase(area);
 
     if (msgbase.cfg) {
@@ -288,8 +304,17 @@ function export() {
                         continue;
                     }
 
-                    if (hdr.from_net_addr) {
-                        log(LOG_DEBUG, hdr.from_net_addr);
+                    //check if same net orgin
+                    if (hdr.from_net_type == NET_MHS) {
+                        log(LOG_DEBUG, "From net type: " + hdr.from_net_type);
+                        if (hdr.from_net_addr) {
+                            log(LOG_DEBUG, "From net addr: " + hdr.from_net_addr);
+                            if (hdr.from_net_addr.toLowerCase() == node.toLowerCase()) {
+                                log(LOG_DEBUG, "Skip same origin address message #" + i);
+                                continue;
+                            }
+                        }
+
                     }
 
                     if (!hdr.id) {
@@ -376,7 +401,7 @@ function import() {
         log(LOG_INFO, "Scanning node: " + node);
         var files = [];
         files = directory(backslash(n_pickup) + "*");
-        for (f in files) {
+        for (var f in files) {
 
             var f_name = files[f];
             //skip directories
@@ -390,7 +415,6 @@ function import() {
 
             log(LOG_INFO, "** Processing: " + f_name);
             var fp = new File(f_name);
-            fp.debug = true;
             if (! fp.open("r")) {
                 log(LOG_INFO, "Can't open file: " + f_name);
             } else {
@@ -466,7 +490,7 @@ function import() {
                                 subject: header['subject'].trim(),
                                 from_agent: AGENT_PROCESS,
                                 from_net_type: NET_MHS,
-                                from_net_addr: format_mhs_from_addr(header['from']),
+                                from_net_addr: format_mhs_domain_addr(header['from']),
                                 summary: header['from'],
                                 tags: 'MHS-Imported MHS-From-' + dest[1]
                             };
