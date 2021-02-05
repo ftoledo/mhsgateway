@@ -351,7 +351,7 @@ function export() {
                     msg_out.printf("Date: %s\r\n", strftime("%m/%d/%Y %H:%M:%S"));
                     msg_out.printf("\r\n", hdr.date);
                     msg_out.printf("@DATE: %s\r\n", hdr.date);
-                    body = msgbase.get_msg_body(i, false, true);
+                    body = msgbase.get_msg_body(i, true, true);
                     msg_out.write(body);
 
                     msg_out.close();
