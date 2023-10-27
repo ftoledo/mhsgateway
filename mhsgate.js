@@ -300,7 +300,7 @@ function export() {
 
                     //get some checks from newslink.js
                     if (hdr == null) {
-                        log(LOG_ERROR, "failed to read msg header #" + i);
+                        log(LOG_ERROR, "[" + area + "] failed to read msg header #" + i);
                         continue;
                     }
 
